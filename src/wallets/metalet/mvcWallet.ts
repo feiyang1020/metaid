@@ -25,6 +25,8 @@ export interface MetaIDWalletForMvc {
   signMessage(message: string, encoding?: 'utf-8' | 'base64' | 'hex' | 'utf8'): Promise<string>
 
   pay({ transactions }: { transactions: Transaction[] }): Promise<TxComposer[]>
+  getUtxos(): Promise<{ address: string; txid: string; value: number; outIndex: number }[]>
+  unlockP2PKHInput(any): Promise<string[]>
 
   send(
     toAddress: string,

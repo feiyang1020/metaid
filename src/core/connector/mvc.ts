@@ -168,6 +168,126 @@ export class MvcConnector implements IMvcConnector {
     }
   }
 
+  async createPinWithAsset(
+    metaidData: Omit<MetaidData, 'revealAddr'>,
+    options: {
+      assistDomian: string
+      signMessage?: string
+      serialAction?: 'combo' | 'finish'
+      transactions?: Transaction[]
+      network: BtcNetwork
+      service?: {
+        address: string
+        satoshis: string
+      }
+      outputs?: {
+        address: string
+        satoshis: string
+      }[]
+    }
+  ): Promise<CreatePinResult> {
+    if (!this.isConnected) {
+      throw new Error(errors.NOT_CONNECTED)
+    }
+    const address = this.wallet.address
+    const utxos = await this.wallet.getUtxos()
+    const utxo = utxos.find((utxo) => utxo.address === address)
+    if (!utxo) {
+      throw new Error('no utxo')
+    }
+    const pinTxComposer = new TxComposer()
+    pinTxComposer.appendP2PKHInput({
+      address: new mvc.Address(address, options.network),
+      satoshis: utxo.value,
+      txId: utxo.txid,
+      outputIndex: utxo.outIndex,
+    })
+
+    pinTxComposer.appendP2PKHOutput({
+      address: new mvc.Address(address, options.network),
+      satoshis: 1,
+    })
+    const metaidOpreturn = buildOpReturnV2(metaidData, {
+      network: options?.network ?? 'testnet',
+    })
+    pinTxComposer.appendOpReturnOutput(metaidOpreturn)
+    const changeAddress = new mvc.Address(address, options.network)
+    pinTxComposer.appendP2PKHOutput({
+      address: changeAddress,
+      satoshis: utxo.value,
+    })
+    const url = `${options.assistDomian}/v1/assist/gas/mvc/pre`
+    const preRes = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        txHex: pinTxComposer.getRawHex(),
+        address,
+      }),
+    })
+    const preData = await preRes.json()
+    if (preData.error) {
+      throw new Error(preData.error)
+    }
+    const tx = new mvc.Transaction(preData.data.txHex)
+    const txObj = tx.toObject()
+    const inputs = txObj.inputs
+    console.log('inputs', inputs)
+    // 获取所有引用的UTXO信息
+    const utxoRawUrl = `https://mvcapi${options.network === 'testnet' ? '-testnet' : ''}.cyber3.space/tx/${inputs[0].prevTxId}/raw`
+    const utxoPromises = txObj.inputs.map(async (input: any) => {
+      const utxoRes = await fetch(utxoRawUrl)
+      return await utxoRes.json()
+    })
+    const _utxos = await Promise.all(utxoPromises)
+    // 为每个input设置正确的output
+    tx.inputs.forEach((input: any, index: number) => {
+      const _tx = new mvc.Transaction(_utxos[index].hex)
+      const utxo = _tx.outputs[input.outputIndex]
+      tx.inputs[index].output = new mvc.Transaction.Output({
+        script: utxo.script,
+        satoshis: utxo.satoshis,
+      })
+    })
+    interface UnlockP2PKHInputParams {
+      transaction: {
+        txComposer: string
+        toSignInputs: number[]
+      }[]
+    }
+    const txComposer = new TxComposer(tx)
+    const txComposerSerialize = txComposer.serialize()
+    const params: UnlockP2PKHInputParams = {
+      transaction: [
+        {
+          txComposer: txComposerSerialize,
+          toSignInputs: [0],
+        },
+      ],
+    }
+
+    const [_txComposerSerialize] = await this.wallet.unlockP2PKHInput(params)
+    // console.log("params", params);
+    const commitUrl = `${options.assistDomian}/v1/assist/gas/mvc/commit`
+    const commitRes = await fetch(commitUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        txHex: TxComposer.deserialize(_txComposerSerialize).getRawHex(),
+        orderId: preData.data.orderId,
+      }),
+    })
+    const commitData = await commitRes.json()
+
+    return {
+      txid: commitData.data.txid,
+    }
+  }
+
   async updateUserInfo({
     userData,
     options,

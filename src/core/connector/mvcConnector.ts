@@ -22,7 +22,33 @@ export type IMvcConnector = {
       signMessage?: string
       serialAction?: 'combo' | 'finish'
       transactions?: Transaction[]
-      network: BtcNetwork
+      network: BtcNetwork,
+      service?: {
+        address: string
+        satoshis: string
+      }
+      outputs?: {
+        address: string
+        satoshis: string
+      }[]
+    }
+  ): Promise<CreatePinResult>
+  createPinWithAsset(
+    metaidData: MetaidData,
+    options: {
+      assistDomian: string
+      signMessage?: string
+      serialAction?: 'combo' | 'finish'
+      transactions?: Transaction[]
+      network: BtcNetwork,
+      service?: {
+        address: string
+        satoshis: string
+      }
+      outputs?: {
+        address: string
+        satoshis: string
+      }[]
     }
   ): Promise<CreatePinResult>
   createUserInfo({

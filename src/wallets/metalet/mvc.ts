@@ -229,4 +229,10 @@ export class MetaletWalletForMvc implements MetaIDWalletForMvc {
 
     return res
   }
+  public async getUtxos() {
+    return await this.internal.getUtxos()
+  }
+  public async unlockP2PKHInput(any) {
+    return await this.internal.unlockP2PKHInput(any)
+  }
 }

@@ -47,6 +47,7 @@ export class MvcEntity {
   }: {
     data: MetaidData
     options: {
+      assistDomian?: string
       network?: BtcNetwork
       signMessage?: string
       serialAction?: 'combo' | 'finish'
@@ -65,6 +66,12 @@ export class MvcEntity {
     const operation = data.operation ?? 'create'
     // console.log('pin path', path)
     const _options = { ...options, network: options.network ?? 'testnet' }
+    if(options.assistDomian){
+      const res = await this.connector.createPinWithAsset({ ...data, operation, path, }, {..._options, assistDomian: options.assistDomian})
+      console.log('res', res)
+  
+      return res
+    }
     const res = await this.connector.createPin({ ...data, operation, path, }, _options)
     console.log('res', res)
 

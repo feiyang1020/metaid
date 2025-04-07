@@ -284,7 +284,7 @@ export class MvcConnector implements IMvcConnector {
     const commitData = await commitRes.json()
 
     return {
-      txid: commitData.data.txid,
+      txid: commitData.data.txId,
     }
   }
 

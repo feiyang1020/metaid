@@ -23,6 +23,7 @@ export type CreatePinResult =
   | {
       txid: string
       transactions?: undefined
+      txids?: string[]
     }
 
 @staticImplements<MvcConnectorStatic>()
@@ -151,11 +152,12 @@ export class MvcConnector implements IMvcConnector {
     //   await this.connector.broadcast(txComposer)
     // }
     const txIDs = await this.batchBroadcast({ txComposer: payRes, network: options.network })
-
+    const txids = []
     for (const [index, p] of payRes.entries()) {
       const txid = p.getTxId()
 
-      const isValid = txIDs[index].txid === txid
+      const isValid = txIDs[index].txid === txid;
+      txids.push(txid)
       if (isValid) {
         await notify({ txHex: p.getRawHex() })
       } else {
@@ -165,6 +167,7 @@ export class MvcConnector implements IMvcConnector {
 
     return {
       txid: payRes[payRes.length - 1].getTxId(),
+      txids,
     }
   }
 

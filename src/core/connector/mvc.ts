@@ -32,6 +32,7 @@ export class MvcConnector implements IMvcConnector {
   private wallet: MetaIDWalletForMvc
   public metaid: string | undefined
   public user: UserInfo
+  public host: string | undefined
 
   private constructor(wallet?: MetaIDWalletForMvc) {
     if (wallet) {
@@ -48,14 +49,27 @@ export class MvcConnector implements IMvcConnector {
     return this.wallet?.xpub || ''
   }
 
-  public static async create({ wallet, network }: { wallet?: MetaIDWalletForMvc; network: BtcNetwork }) {
+  public static async create({
+    wallet,
+    network,
+    host,
+  }: {
+    wallet?: MetaIDWalletForMvc
+    network: BtcNetwork
+    host?: string
+  }) {
     const connector = new MvcConnector(wallet)
+    connector.host = host
 
     if (wallet) {
       connector.metaid = sha256(Buffer.from(wallet.address)).toString('hex')
 
       // ask api for user (to do : switch api to mvc)
-      const metaidInfo = await getInfoByAddress({ address: wallet.address, network: network ?? wallet.network })
+      const metaidInfo = await getInfoByAddress({
+        address: wallet.address,
+        network: network ?? wallet.network,
+        host: host,
+      })
       if (!isNil(metaidInfo)) {
         connector.user = metaidInfo
       }
@@ -73,11 +87,11 @@ export class MvcConnector implements IMvcConnector {
   //   return this.hasUser() && !!this.user.metaid && !!this.user.protocolTxid && !!this.user.infoTxid && !!this.user.name
   // }
 
-  async getUser({ network, currentAddress }: { network: BtcNetwork; currentAddress?: string }) {
+  async getUser({ network, currentAddress, host }: { network: BtcNetwork; currentAddress?: string; host?: string }) {
     if (!!currentAddress) {
-      return await getInfoByAddress({ address: currentAddress, network })
+      return await getInfoByAddress({ address: currentAddress, network, host })
     } else {
-      return await getInfoByAddress({ address: this.address, network })
+      return await getInfoByAddress({ address: this.address, network, host })
     }
   }
 
@@ -152,12 +166,10 @@ export class MvcConnector implements IMvcConnector {
     //   await this.connector.broadcast(txComposer)
     // }
     const txIDs = await this.batchBroadcast({ txComposer: payRes, network: options.network })
-    const txids = []
     for (const [index, p] of payRes.entries()) {
       const txid = p.getTxId()
 
-      const isValid = txIDs[index].txid === txid;
-      txids.push(txid)
+      const isValid = txIDs[index].txid === txid
       if (isValid) {
         await notify({ txHex: p.getRawHex() })
       } else {
@@ -167,7 +179,7 @@ export class MvcConnector implements IMvcConnector {
 
     return {
       txid: payRes[payRes.length - 1].getTxId(),
-      txids,
+      txids: payRes.map((item) => item.getTxId()),
     }
   }
 

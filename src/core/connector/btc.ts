@@ -51,6 +51,7 @@ export class BtcConnector implements IBtcConnector {
   private wallet: MetaIDWalletForBtc
   public metaid: string | undefined
   public user: UserInfo
+  public host: string
   private constructor(wallet?: MetaIDWalletForBtc) {
     this._isConnected = true
 
@@ -67,14 +68,23 @@ export class BtcConnector implements IBtcConnector {
     return this?.wallet?.network || 'testnet'
   }
 
-  public static async create({ wallet, network }: { wallet?: MetaIDWalletForBtc; network: BtcNetwork }) {
+  public static async create({
+    wallet,
+    network,
+    host,
+  }: {
+    wallet?: MetaIDWalletForBtc
+    network: BtcNetwork
+    host?: string
+  }) {
     const connector = new BtcConnector(wallet)
+    connector.host = host
 
     if (wallet) {
       connector.metaid = sha256(Buffer.from(wallet.address)).toString('hex')
 
       // ask api for  user
-      const metaidInfo = await getInfoByAddress({ address: wallet.address, network: network ?? wallet.network })
+      const metaidInfo = await getInfoByAddress({ address: wallet.address, network: network ?? wallet.network, host })
       if (!isNil(metaidInfo)) {
         // connector.metaid = metaidInfo.rootTxId + 'i0'
         connector.user = { ...metaidInfo, metaid: connector.metaid }
@@ -89,11 +99,11 @@ export class BtcConnector implements IBtcConnector {
     return !!this.user
   }
 
-  async getUser({ network, currentAddress }: { network: BtcNetwork; currentAddress?: string }) {
+  async getUser({ network, currentAddress, host }: { network: BtcNetwork; currentAddress?: string; host?: string }) {
     if (!isNil(currentAddress)) {
-      return await getInfoByAddress({ address: currentAddress, network: network ?? this.network })
+      return await getInfoByAddress({ address: currentAddress, network: network ?? this.network, host })
     } else {
-      return await getInfoByAddress({ address: this.address, network: network ?? this.network })
+      return await getInfoByAddress({ address: this.address, network: network ?? this.network, host })
     }
   }
 

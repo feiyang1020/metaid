@@ -232,11 +232,13 @@ export async function getPinListByAddress({
 export async function getInfoByAddress({
   address,
   network = 'testnet',
+  host = '',
 }: {
   address: string
   network: BtcNetwork
+  host?: string
 }): Promise<UserInfo | null> {
-  const url = `${MAN_BASE_URL_MAPPING[network]}/api/info/address/${address}`
+  const url = `${host ? host : MAN_BASE_URL_MAPPING[network]}/api/info/address/${address}`
 
   try {
     const data = await axios.get(url).then((res) => res.data)

@@ -315,13 +315,16 @@ export async function fetchRootCandidate(params: { xpub: string; parentTxId: str
 }
 
 export async function broadcast({ txHex, network }: { txHex: string; network: BtcNetwork }): Promise<{ txid: string }> {
-  const txid = await axios
+  const { data: txid, message } = await axios
     .post(`https://www.metalet.space/wallet-api/v3/tx/broadcast`, {
       chain: 'mvc',
       net: network,
       rawTx: txHex,
     })
-    .then((res) => res.data.data)
+    .then((res) => res.data)
+  if (!txid) {
+    throw new Error(message)
+  }
 
   return { txid }
 }

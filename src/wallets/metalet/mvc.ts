@@ -151,7 +151,7 @@ export class MetaletWalletForMvc implements MetaIDWalletForMvc {
     return new TxComposer(signedTx)
   }
 
-  public async pay({ transactions }: { transactions: Transaction[] }) {
+  public async pay({ transactions, feeb }: { transactions: Transaction[]; feeb: number }) {
     const {
       payedTransactions,
     }: {
@@ -164,6 +164,7 @@ export class MetaletWalletForMvc implements MetaIDWalletForMvc {
         }
       }),
       hasMetaid: true,
+      feeb,
     })
 
     return payedTransactions.map((txComposerSerialized: string) => {

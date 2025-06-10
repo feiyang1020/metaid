@@ -110,6 +110,7 @@ export class MvcConnector implements IMvcConnector {
         address: string
         satoshis: string
       }[]
+      feeRate?: number
     }
   ): Promise<CreatePinResult> {
     if (!this.isConnected) {
@@ -160,6 +161,7 @@ export class MvcConnector implements IMvcConnector {
     ///// apply pay
     const payRes = await this.pay({
       transactions,
+      feeb: options?.feeRate,
     })
 
     // for (const txComposer of payRes) {
@@ -449,8 +451,8 @@ export class MvcConnector implements IMvcConnector {
     return this.wallet.signInput({ txComposer, inputIndex })
   }
 
-  pay({ transactions }: { transactions: Transaction[] }) {
-    return this.wallet.pay({ transactions })
+  pay({ transactions, feeb }: { transactions: Transaction[]; feeb?: number }) {
+    return this.wallet.pay({ transactions, feeb })
   }
 
   send(toAddress: string, amount: number) {

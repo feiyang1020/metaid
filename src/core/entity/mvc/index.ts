@@ -59,7 +59,8 @@ export class MvcEntity {
       outputs?: {
         address: string
         satoshis: string
-      }[]
+      }[],
+      feeRate?: number
     }
   }) {
     const path = data?.path ?? this.schema.path

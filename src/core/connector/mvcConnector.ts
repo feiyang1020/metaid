@@ -31,6 +31,7 @@ export type IMvcConnector = {
         address: string
         satoshis: string
       }[]
+      feeRate?: number
     }
   ): Promise<CreatePinResult>
   createPinWithAsset(
@@ -63,6 +64,7 @@ export type IMvcConnector = {
     options: {
       feeRate?: number
       network?: BtcNetwork
+      assistDomain?: string
     }
   }): Promise<{
     nameRes: CreatePinResult

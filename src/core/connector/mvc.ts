@@ -19,6 +19,7 @@ export type CreatePinResult =
   | {
       transactions: Transaction[]
       txid?: undefined
+      txids?: string[]
     }
   | {
       txid: string
@@ -208,9 +209,32 @@ export class MvcConnector implements IMvcConnector {
     }
     const address = this.wallet.address
     const utxos = await this.wallet.getUtxos()
-    const utxo = utxos.find((utxo) => utxo.address === address)
+    let utxo = utxos.find((utxo) => utxo.address === address)
     if (!utxo) {
-      throw new Error('no utxo')
+      const url = `${options.assistDomian}/v1/assist/gas/mvc/address-init`
+      const preRes = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          gasChain: 'mvc',
+          address,
+        }),
+      })
+      const initUtxo = await preRes.json()
+      if (initUtxo.error) {
+        throw new Error(initUtxo.error)
+      }
+      if (!initUtxo.data) {
+        throw new Error('No UTXO found for address')
+      }
+      utxo = {
+        txid: initUtxo.data.txId,
+        outIndex: initUtxo.data.index,
+        value: initUtxo.data.amount,
+        address: initUtxo.data.address,
+      }
     }
     const pinTxComposer = new TxComposer()
     pinTxComposer.appendP2PKHInput({
@@ -253,8 +277,14 @@ export class MvcConnector implements IMvcConnector {
     const inputs = txObj.inputs
     console.log('inputs', inputs)
     // 获取所有引用的UTXO信息
-    const utxoRawUrl = `https://mvcapi${options.network === 'testnet' ? '-testnet' : ''}.cyber3.space/tx/${inputs[0].prevTxId}/raw`
+
     const utxoPromises = txObj.inputs.map(async (input: any) => {
+
+      let utxoRawUrl = `https://mvcapi${options.network === 'testnet' ? '-testnet' : ''}.cyber3.space/tx/${input.prevTxId}/raw`;
+      if(options.network !=='testnet'){
+        utxoRawUrl = `https://api.microvisionchain.com/open-api-mvc/tx/${input.prevTxId}/raw`;
+      }
+      
       const utxoRes = await fetch(utxoRawUrl)
       return await utxoRes.json()
     })
@@ -383,38 +413,125 @@ export class MvcConnector implements IMvcConnector {
       avatar?: string
       background?: string
     }
-    options: { feeRate?: number; network?: BtcNetwork }
+    options: { feeRate?: number; network?: BtcNetwork; assistDomain?: string }
   }): Promise<{
     nameRes: CreatePinResult
     bioRes: CreatePinResult | undefined
     avatarRes: CreatePinResult | undefined
     backgroundRes: CreatePinResult | undefined
   }> {
-    const createPin = async (body: string, path: string, encoding?: BufferEncoding, contentType?: string) => {
-      return await this.createPin(
-        {
-          operation: 'create',
-          body,
-          path,
-          encoding,
-          contentType,
-          flag: 'metaid',
-        },
-        { network: options?.network ?? 'testnet' }
-      )
+    const metaDatas: MetaidData[] = []
+
+    if (userData.name) {
+      metaDatas.push({
+        operation: 'create',
+        body: userData.name,
+        path: '/info/name',
+        encoding: 'utf-8',
+        contentType: 'text/plain',
+        flag: 'metaid',
+      })
+    }
+    if (userData.bio) {
+      metaDatas.push({
+        operation: 'create',
+        body: userData.bio,
+        path: '/info/bio',
+        encoding: 'utf-8',
+        contentType: 'text/plain',
+        flag: 'metaid',
+      })
+    }
+    if (userData.avatar) {
+      metaDatas.push({
+        operation: 'create',
+        body: userData.avatar,
+        path: '/info/avatar',
+        encoding: 'base64',
+        contentType: 'image/jpeg;binary',
+        flag: 'metaid',
+      })
+    }
+    if (userData.background) {
+      metaDatas.push({
+        operation: 'create',
+        body: userData.background,
+        path: '/info/background',
+        encoding: 'base64',
+        contentType: 'image/jpeg;binary',
+        flag: 'metaid',
+      })
+    }
+    if (metaDatas.length === 0) {
+      throw new Error('No user data provided to create user info')
+    }
+    let _transactions: Transaction[] = []
+    let _txids: string[] = []
+
+    if (options.assistDomain) {
+      for (let i = 0; i < metaDatas.length; i++) {
+        const metaData = metaDatas[i]
+        const { txid } = await this.createPinWithAsset(metaData, {
+          network: options?.network ?? 'testnet',
+          signMessage: 'create User Info',
+          serialAction: 'finish',
+          assistDomian: options.assistDomain as string,
+        })
+        if (txid) {
+          _txids.push(txid)
+        }
+      }
+    } else {
+      for (let i = 0; i < metaDatas.length; i++) {
+        const metaData = metaDatas[i]
+        const { transactions, txid, txids } = await this.createPin(metaData, {
+          network: options?.network ?? 'testnet',
+          signMessage: 'create User Info',
+          serialAction: i === metaDatas.length - 1 ? 'finish' : 'combo',
+          transactions: [..._transactions],
+          feeRate: options?.feeRate,
+        })
+        _transactions = transactions
+        if (txids) {
+          _txids = txids
+        }
+      }
+    }
+    let ret = {
+      nameRes: undefined,
+      bioRes: undefined,
+      avatarRes: undefined,
+      backgroundRes: undefined,
+    }
+    let userInfos = [
+      {
+        key: 'name',
+        resKey: 'nameRes',
+      },
+      {
+        key: 'bio',
+        resKey: 'bioRes',
+      },
+      {
+        key: 'avatar',
+        resKey: 'avatarRes',
+      },
+      {
+        key: 'background',
+        resKey: 'backgroundRes',
+      },
+    ]
+    for (let i = 0; i < userInfos.length; i++) {
+      const { key, resKey } = userInfos[i]
+      if (userData[key]) {
+        const txid = _txids.shift()
+        ret[resKey] = {
+          txid,
+        }
+      }
     }
 
-    const nameRes = await createPin(userData.name, '/info/name')
-
-    const bioRes = !isEmpty(userData?.bio ?? '') ? await createPin(userData.bio, '/info/bio') : undefined
-    const avatarRes = !isEmpty(userData?.avatar ?? '')
-      ? await createPin(userData.avatar, '/info/avatar', 'base64', 'image/jpeg;binary')
-      : undefined
-    const backgroundRes = !isEmpty(userData?.background ?? '')
-      ? await createPin(userData.background, '/info/background', 'base64', 'image/jpeg;binary')
-      : undefined
-
-    return { nameRes, bioRes, avatarRes, backgroundRes }
+    return ret
   }
 
   // metaid

@@ -69,6 +69,7 @@ export type IBtcConnector = {
     options: {
       network?: BtcNetwork
       feeRate?: number
+      assistDomain?: string
       service?: {
         address: string
         satoshis: string

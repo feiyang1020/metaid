@@ -6,6 +6,7 @@ import { broadcast as broadcastToApi, batchBroadcast as batchBroadcastApi } from
 import { DERIVE_MAX_DEPTH } from '@/data/constants.js'
 import { isNil } from 'ramda'
 import { BtcNetwork } from '@/service/btc.js'
+import { generateKey, isBiggerThan1MB } from '@/utils/helper.js'
 
 @staticImplements<WalletStatic>()
 export class MetaletWalletForMvc implements MetaIDWalletForMvc {
@@ -152,11 +153,7 @@ export class MetaletWalletForMvc implements MetaIDWalletForMvc {
   }
 
   public async pay({ transactions, feeb }: { transactions: Transaction[]; feeb: number }) {
-    const {
-      payedTransactions,
-    }: {
-      payedTransactions: string[]
-    } = await this.internal.pay({
+    const params = {
       transactions: transactions.map((transaction) => {
         return {
           txComposer: transaction.txComposer.serialize(),
@@ -165,7 +162,64 @@ export class MetaletWalletForMvc implements MetaIDWalletForMvc {
       }),
       hasMetaid: true,
       feeb,
-    })
+    }
+
+    if (this.internal.storageChunk && isBiggerThan1MB(JSON.stringify(params))) {
+      type StorageChunkParams = {
+        key: string
+        index: number
+        total: number
+        chunk: string
+      }
+      const key = generateKey()
+      const data = JSON.stringify(params)
+      // TODO: handle big params
+      // 分片存储（大于 1MB）
+      const chunkSize = 256 * 1024 // 每片 256KB
+      const total = Math.ceil(data.length / chunkSize)
+
+      for (let i = 0; i < total; i++) {
+        const chunk = data.slice(i * chunkSize, (i + 1) * chunkSize)
+        await this.internal.storageChunk({ chunk, index: i, total, key })
+      }
+
+      const ret = await this.internal.pay({
+        useChunk: true,
+        chunkKey: key,
+      })
+
+      const {
+        payedTransactions,
+        status,
+        message,
+      }: {
+        payedTransactions: string[]
+        status: string
+        message: string
+      } = ret
+      if (status === 'error') {
+        throw new Error(message)
+      }
+
+      return payedTransactions.map((txComposerSerialized: string) => {
+        return TxComposer.deserialize(txComposerSerialized)
+      })
+    }
+
+    const ret = await this.internal.pay(params)
+
+    const {
+      payedTransactions,
+      status,
+      message,
+    }: {
+      payedTransactions: string[]
+      status: string
+      message: string
+    } = ret
+    if (status === 'error') {
+      throw new Error(message)
+    }
 
     return payedTransactions.map((txComposerSerialized: string) => {
       return TxComposer.deserialize(txComposerSerialized)

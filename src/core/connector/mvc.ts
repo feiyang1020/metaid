@@ -202,40 +202,64 @@ export class MvcConnector implements IMvcConnector {
         address: string
         satoshis: string
       }[]
+      utxo?: {
+        txid: string
+        outIndex: number
+        value: number
+        address: string
+      }
     }
-  ): Promise<CreatePinResult> {
+  ): Promise<{
+    txid: string
+    utxo?: {
+      txid: string
+      outIndex: number
+      value: number
+      address: string
+    }
+  }> {
     if (!this.isConnected) {
       throw new Error(errors.NOT_CONNECTED)
     }
     const address = this.wallet.address
-    const utxos = await this.wallet.getUtxos()
-    let utxo = utxos.find((utxo) => utxo.address === address)
+    let utxo = options?.utxo
     if (!utxo) {
-      const url = `${options.assistDomian}/v1/assist/gas/mvc/address-init`
-      const preRes = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          gasChain: 'mvc',
-          address,
-        }),
-      })
-      const initUtxo = await preRes.json()
-      if (initUtxo.error) {
-        throw new Error(initUtxo.error)
-      }
-      if (!initUtxo.data) {
-        throw new Error('No UTXO found for address')
-      }
-      utxo = {
-        txid: initUtxo.data.txId,
-        outIndex: initUtxo.data.index,
-        value: initUtxo.data.amount,
-        address: initUtxo.data.address,
+      const utxos = await this.wallet.getUtxos()
+      utxo = utxos.find((utxo) => utxo.address === address)
+      if (!utxo) {
+        const url = `${options.assistDomian}/v1/assist/gas/mvc/address-init`
+        const preRes = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            gasChain: 'mvc',
+            address,
+          }),
+        })
+        const initUtxo = await preRes.json()
+        if (initUtxo.error) {
+          throw new Error(initUtxo.error)
+        }
+        if (!initUtxo.data) {
+          await sleep(5000)
+          const utxos = await this.wallet.getUtxos()
+          utxo = utxos.find((utxo) => utxo.address === address)
+          if (!utxo) {
+            throw new Error('No UTXO found for address')
+          }
+        } else {
+          utxo = {
+            txid: initUtxo.data.txId,
+            outIndex: initUtxo.data.index,
+            value: initUtxo.data.amount,
+            address: initUtxo.data.address,
+          }
+        }
       }
     }
+
     const pinTxComposer = new TxComposer()
     pinTxComposer.appendP2PKHInput({
       address: new mvc.Address(address, options.network),
@@ -279,12 +303,11 @@ export class MvcConnector implements IMvcConnector {
     // 获取所有引用的UTXO信息
 
     const utxoPromises = txObj.inputs.map(async (input: any) => {
-
-      let utxoRawUrl = `https://mvcapi${options.network === 'testnet' ? '-testnet' : ''}.cyber3.space/tx/${input.prevTxId}/raw`;
-      if(options.network !=='testnet'){
-        utxoRawUrl = `https://api.microvisionchain.com/open-api-mvc/tx/${input.prevTxId}/raw`;
+      let utxoRawUrl = `https://mvcapi${options.network === 'testnet' ? '-testnet' : ''}.cyber3.space/tx/${input.prevTxId}/raw`
+      if (options.network !== 'testnet') {
+        utxoRawUrl = `https://api.microvisionchain.com/open-api-mvc/tx/${input.prevTxId}/raw`
       }
-      
+
       const utxoRes = await fetch(utxoRawUrl)
       return await utxoRes.json()
     })
@@ -332,6 +355,12 @@ export class MvcConnector implements IMvcConnector {
 
     return {
       txid: commitData.data.txId,
+      utxo: {
+        txid: commitData.data.txId,
+        outIndex: 2,
+        value: utxo.value,
+        address: address,
+      },
     }
   }
 
@@ -469,14 +498,25 @@ export class MvcConnector implements IMvcConnector {
     let _txids: string[] = []
 
     if (options.assistDomain) {
+      let utxo: {
+        txid: string
+        outIndex: number
+        value: number
+        address: string
+      } = undefined
       for (let i = 0; i < metaDatas.length; i++) {
         const metaData = metaDatas[i]
-        const { txid } = await this.createPinWithAsset(metaData, {
+        const _options: any = {
           network: options?.network ?? 'testnet',
           signMessage: 'create User Info',
           serialAction: 'finish',
           assistDomian: options.assistDomain as string,
-        })
+        }
+        if (utxo) {
+          _options.utxo = utxo
+        }
+        const { txid, utxo: _utxo } = await this.createPinWithAsset(metaData, _options)
+        utxo = _utxo
         if (txid) {
           _txids.push(txid)
         }
